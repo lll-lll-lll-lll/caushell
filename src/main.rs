@@ -1,4 +1,8 @@
-use nix::unistd::execvp;
+use nix::{
+    sys::wait::waitpid,
+    unistd::{execvp, fork, ForkResult},
+};
+
 use std::{
     ffi::CString,
     io::{stdin, stdout, Write},
@@ -54,12 +58,22 @@ fn shell_parse_line(line: &str) -> Option<Action> {
 }
 
 fn shell_exec_simple_command(command: Vec<String>) {
-    let args = command
-        .into_iter()
-        .map(|c| CString::new(c).unwrap())
-        .collect::<Vec<_>>();
+    match unsafe { fork() } {
+        Ok(ForkResult::Parent { child, .. }) => {
+            waitpid(child, None).unwrap();
+        }
+        Ok(ForkResult::Child) => {
+            let args = command
+                .into_iter()
+                .map(|c| CString::new(c).unwrap())
+                .collect::<Vec<_>>();
 
-    execvp(&args[0], &args).unwrap();
+            execvp(&args[0], &args).unwrap();
+        }
+        Err(e) => {
+            eprintln!("fork error: {}", e);
+        }
+    }
 }
 
 fn main() {
